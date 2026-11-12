@@ -38,10 +38,12 @@
   .seg button.on { background: #2a3a4f; color: var(--text); border-color: var(--accent); font-weight: 600; }
   .step { display: flex; gap: 6px; margin-top: 6px; }
   .step button { flex: 1; padding: 10px 0; border-radius: 8px; border: 1px solid var(--line); background: #222831; color: var(--text); font-size: 14px; }
+  /* 入力中も判定が見えるよう画面上部に固定 */
+  #verdict { position: sticky; top: 0; z-index: 1; box-shadow: 0 0 0 4px var(--bg); }
   .verdict { font-size: 26px; font-weight: 800; text-align: center; padding: 10px; border-radius: 10px; margin-bottom: 10px; }
-  .v-good { background: rgba(46,204,113,.15); color: var(--good); }
-  .v-warn { background: rgba(241,196,15,.15); color: var(--warn); }
-  .v-bad  { background: rgba(231,76,60,.12); color: var(--bad); }
+  .v-good { background: linear-gradient(rgba(46,204,113,.15), rgba(46,204,113,.15)) var(--bg); color: var(--good); }
+  .v-warn { background: linear-gradient(rgba(241,196,15,.15), rgba(241,196,15,.15)) var(--bg); color: var(--warn); }
+  .v-bad  { background: linear-gradient(rgba(231,76,60,.12), rgba(231,76,60,.12)) var(--bg); color: var(--bad); }
   .v-none { background: #222831; color: var(--sub); font-size: 18px; }
   .stop { font-size: 14px; background: #222831; border-radius: 8px; padding: 10px; margin-bottom: 12px; line-height: 1.5; }
   .stop b { color: var(--warn); }
@@ -138,29 +140,53 @@ const DEFAULTS = {
   },
 };
 
-const STORE_KEY = 'pachi-ev-v2';
+// 保存するのはユーザーが変えた値（over）だけ。初期値はコード側の DEFAULTS を毎回使うので、更新がスマホにも反映される
+// over: { 機種: { coin, threshold, memo, aim:{}, ev:{}, stop:{状況:文}, ceil:{counter:{状況:数}} } }
+const STORE_KEY = 'pachi-ev-v3';
 let state = load();
+
+function buildCfg(k, o = {}) {
+  const m = structuredClone(DEFAULTS[k]);
+  for (const f of ['coin', 'threshold', 'memo']) if (o[f] != null) m[f] = o[f];
+  for (const ak in o.aim || {}) { if (o.aim[ak] === null) delete m.aim[ak]; else m.aim[ak] = o.aim[ak]; }
+  Object.assign(m.ev, o.ev);
+  m.situations.forEach(s => { if (o.stop?.[s.id] != null) s.stop = o.stop[s.id]; });
+  m.counters.forEach(c => Object.assign(c.ceil, o.ceil?.[c.id]));
+  return m;
+}
 
 function load() {
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(STORE_KEY)); } catch (e) {}
-  const s = { tab: 'lyco', rate: 'eq', sit: {}, input: {}, cfg: structuredClone(DEFAULTS) };
-  if (saved) {
-    Object.assign(s, { tab: saved.tab || s.tab, rate: saved.rate || s.rate, sit: saved.sit || {}, input: saved.input || {} });
-    for (const k in s.cfg) if (saved.cfg && saved.cfg[k]) s.cfg[k] = { ...s.cfg[k], ...saved.cfg[k] };
-  }
+  const s = { tab: 'lyco', rate: 'eq', sit: {}, input: {}, over: {}, ...(saved || {}) };
+  if (!DEFAULTS[s.tab]) s.tab = 'lyco';
+  if (!RATES.some(r => r.id === s.rate)) s.rate = 'eq';
+  s.cfg = {};
+  for (const k in DEFAULTS) s.cfg[k] = buildCfg(k, s.over[k]);
   return s;
 }
-function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {} }
+function save() {
+  const { cfg, ...rest } = state;
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(rest)); } catch (e) {}
+}
+// ユーザーの変更を over に記録して cfg を作り直す
+function setOver(fn) {
+  const o = state.over[state.tab] || (state.over[state.tab] = {});
+  fn(o);
+  state.cfg[state.tab] = buildCfg(state.tab, o);
+}
 
-const yen = n => (n < 0 ? '-' : '+') + '¥' + Math.abs(Math.round(n)).toLocaleString();
-const sitOf = () => state.sit[state.tab] || state.cfg[state.tab].situations[0].id;
+const yen = n => { const r = Math.round(n); return (r < 0 ? '-' : '+') + '¥' + Math.abs(r).toLocaleString(); };
+const sitOf = () => {
+  const m = state.cfg[state.tab], id = state.sit[state.tab];
+  return m.situations.some(s => s.id === id) ? id : m.situations[0].id;
+};
 const key = cid => `${cid}_${state.rate}_${sitOf()}`;
 
 // "G,円" の行から線形補間で期待値を出す
 function evFromTable(text, x) {
   if (!text) return null;
-  const pts = text.split('\n').map(l => l.split(/[,\s]+/).map(Number)).filter(p => p.length >= 2 && !isNaN(p[0]) && !isNaN(p[1])).sort((a, b) => a[0] - b[0]);
+  const pts = text.split('\n').map(l => l.trim().replace(/[，、]/g, ',').split(/[,\s]+/).map(Number)).filter(p => p.length >= 2 && !isNaN(p[0]) && !isNaN(p[1])).sort((a, b) => a[0] - b[0]);
   if (!pts.length) return null;
   if (x <= pts[0][0]) return pts[0][1];
   for (let i = 1; i < pts.length; i++) {
@@ -171,6 +197,7 @@ function evFromTable(text, x) {
 
 function judge(m, c, val) {
   const ceil = c.ceil[sitOf()];
+  if (val == null) return { ceil, level: 'none', empty: true };
   const remain = Math.max(0, ceil - val);
   const cost = remain / m.coin * 1000;
   const aim = m.aim[key(c.id)];
@@ -207,8 +234,11 @@ function render() {
 
   html += `<div class="card"><details><summary>機種メモ</summary><p class="note" id="memo" style="white-space:pre-wrap"></p></details></div>`;
   html += settingsHtml(m, sit);
-  html += `<p class="note">${m.full}／コイン持ち ${m.coin}G/1000円で計算。期待値表がある場合は「${yen(m.threshold)}以上で◎、0円以上で△」、ない場合は狙い目G数で判定。数値は解析サイトの設定1理論値で、勝ちを保証するものではありません。</p>`;
+  html += `<p class="note" id="foot"></p>`;
+  // 作り直しても開いていた折りたたみ（機種メモ・設定）は開いたままにする
+  const open = [...document.querySelectorAll('#app details')].map(x => x.open);
   document.getElementById('app').innerHTML = html;
+  document.querySelectorAll('#app details').forEach((x, i) => x.open = !!open[i]);
   update();
 }
 
@@ -217,9 +247,13 @@ function update() {
   const m = state.cfg[state.tab], inp = state.input[state.tab];
   document.getElementById('stop').textContent = m.situations.find(s => s.id === sitOf()).stop;
   document.getElementById('memo').textContent = m.memo;
+  document.getElementById('foot').textContent = `${m.full}／コイン持ち ${m.coin}G/1000円で計算。期待値表がある場合は「${yen(m.threshold)}以上で◎、0円以上で△」、ない場合は狙い目G数で判定。数値は解析サイトの設定1理論値で、勝ちを保証するものではありません。`;
   const results = m.counters.map(c => {
-    const r = judge(m, c, Number(inp[c.id]) || 0);
-    document.getElementById(`res-${c.id}`).innerHTML = `<table>
+    const raw = inp[c.id];
+    const r = judge(m, c, raw === '' || raw == null || isNaN(Number(raw)) ? null : Math.max(0, Number(raw)));
+    const el = document.getElementById(`res-${c.id}`);
+    if (r.empty) { el.innerHTML = `<table><tr><td>天井</td><td>${r.ceil}${c.unit}</td></tr></table>`; return r; }
+    el.innerHTML = `<table>
       ${r.ev != null ? `<tr class="big"><td>期待値</td><td style="color:var(--${r.level})">${yen(r.ev)}</td></tr>` : ''}
       <tr><td>天井</td><td>${r.ceil}${c.unit}</td></tr>
       <tr><td>天井まで</td><td>${r.remain}${c.unit}</td></tr>
@@ -230,7 +264,8 @@ function update() {
   });
   const order = { good: 3, warn: 2, bad: 1, none: 0 };
   const best = results.reduce((a, b) => order[b.level] > order[a.level] ? b : a).level;
-  const label = { good: '◎ 狙い目', warn: '△ 微妙', bad: '× 見送り', none: '判定データなし' }[best];
+  const allEmpty = results.every(r => r.empty);
+  const label = allEmpty ? 'ゲーム数を入力' : { good: '◎ 狙い目', warn: '△ 微妙', bad: '× 見送り', none: '判定データなし' }[best];
   const v = document.getElementById('verdict');
   v.className = `verdict v-${best}`;
   v.textContent = label;
@@ -265,6 +300,7 @@ let confirmReset = false;
 document.addEventListener('click', e => {
   const t = e.target.closest('button'); if (!t) return;
   const d = t.dataset;
+  if (t.classList.contains('on')) return; // 選択中のボタンは何もしない
   if (d.tab) state.tab = d.tab;
   else if (d.rate) state.rate = d.rate;
   else if (d.sit) state.sit[state.tab] = d.sit;
@@ -275,21 +311,31 @@ document.addEventListener('click', e => {
     save(); update();
     return;
   } else if (d.resetcfg) {
-    if (!confirmReset) { confirmReset = true; t.textContent = 'もう一度押すと初期値に戻します'; return; }
-    state.cfg[state.tab] = structuredClone(DEFAULTS[state.tab]);
+    if (!confirmReset) {
+      confirmReset = true; t.textContent = 'もう一度押すと初期値に戻します';
+      setTimeout(() => { confirmReset = false; t.textContent = 'この機種の設定を初期値に戻す'; }, 3000);
+      return;
+    }
+    delete state.over[state.tab];
+    state.cfg[state.tab] = buildCfg(state.tab);
   } else return;
   confirmReset = false;
   save(); render();
 });
 
 document.addEventListener('input', e => {
-  const t = e.target, d = t.dataset, m = state.cfg[state.tab];
-  if (d.in) state.input[state.tab][d.in] = t.value;
-  else if (d.cfg) m[d.cfg] = d.cfg === 'memo' ? t.value : (Number(t.value) || DEFAULTS[state.tab][d.cfg]);
-  else if (d.stop) m.situations.find(s => s.id === d.stop).stop = t.value;
-  else if (d.ceil) m.counters.find(c => c.id === d.ceil).ceil[sitOf()] = Number(t.value) || 0;
-  else if (d.aim) { if (t.value !== '') m.aim[d.aim] = Number(t.value); else delete m.aim[d.aim]; }
-  else if (d.ev) m.ev[d.ev] = t.value;
+  const t = e.target, d = t.dataset, v = t.value, n = parseFloat(v);
+  if (d.in) state.input[state.tab][d.in] = v;
+  else if (d.cfg === 'memo') setOver(o => o.memo = v);
+  else if (d.cfg) {
+    // 入力途中の空欄や不正値は無視（0 は有効。コイン持ちだけは 0 以下を不可）
+    if (v === '' || isNaN(n) || (d.cfg === 'coin' && n <= 0)) return;
+    setOver(o => o[d.cfg] = n);
+  }
+  else if (d.stop) setOver(o => (o.stop ||= {})[d.stop] = v);
+  else if (d.ceil) { if (isNaN(n)) return; setOver(o => ((o.ceil ||= {})[d.ceil] ||= {})[sitOf()] = n); }
+  else if (d.aim) setOver(o => (o.aim ||= {})[d.aim] = v === '' || isNaN(n) ? null : n);
+  else if (d.ev) setOver(o => (o.ev ||= {})[d.ev] = v);
   else return;
   save(); update();
 });
