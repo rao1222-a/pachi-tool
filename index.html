@@ -195,34 +195,45 @@ function render() {
       ${m.situations.map(s => `<button data-sit="${s.id}" class="${sit.id === s.id ? 'on' : ''}">${s.label}</button>`).join('')}</div></div>
   </div>`;
 
-  const results = [];
   for (const c of m.counters) {
-    const val = Number(inp[c.id]) || 0;
-    const r = judge(m, c, val);
-    results.push(r);
     html += `<div class="card">
       <div class="field"><label>${c.label}</label>
         <input type="number" inputmode="numeric" data-in="${c.id}" value="${inp[c.id] ?? ''}" placeholder="0">
         <div class="step">${[-100, -10, 10, 50, 100].map(d => `<button data-step="${c.id}" data-d="${d}">${d > 0 ? '+' : ''}${d}</button>`).join('')}</div>
       </div>
-      <table>
-        ${r.ev != null ? `<tr class="big"><td>期待値</td><td style="color:var(--${r.level})">${yen(r.ev)}</td></tr>` : ''}
-        <tr><td>天井</td><td>${r.ceil}${c.unit}</td></tr>
-        <tr><td>天井まで</td><td>${r.remain}${c.unit}</td></tr>
-        <tr><td>天井までの投資目安${c.unit === 'G' ? '' : '（1あべし=1G換算・多め）'}</td><td>${yen(r.cost).replace('+', '')}</td></tr>
-        ${r.aim != null ? `<tr><td>狙い目</td><td>${r.aim}${c.unit}〜</td></tr>` : ''}
-      </table></div>`;
+      <div id="res-${c.id}"></div></div>`;
   }
+  html = `<div id="verdict"></div><div class="stop"><b>やめどき：</b><span id="stop"></span></div>` + html;
 
-  const order = { good: 3, warn: 2, bad: 1, none: 0 };
-  const best = results.reduce((a, b) => order[b.level] > order[a.level] ? b : a).level;
-  const label = { good: '◎ 狙い目', warn: '△ 微妙', bad: '× 見送り', none: '判定データなし' }[best];
-  html = `<div class="verdict v-${best}">${label}</div><div class="stop"><b>やめどき：</b>${esc(sit.stop)}</div>` + html;
-
-  html += `<div class="card"><details><summary>機種メモ</summary><p class="note" style="white-space:pre-wrap">${esc(m.memo)}</p></details></div>`;
+  html += `<div class="card"><details><summary>機種メモ</summary><p class="note" id="memo" style="white-space:pre-wrap"></p></details></div>`;
   html += settingsHtml(m, sit);
   html += `<p class="note">${m.full}／コイン持ち ${m.coin}G/1000円で計算。期待値表がある場合は「${yen(m.threshold)}以上で◎、0円以上で△」、ない場合は狙い目G数で判定。数値は解析サイトの設定1理論値で、勝ちを保証するものではありません。</p>`;
   document.getElementById('app').innerHTML = html;
+  update();
+}
+
+// 判定と結果欄だけ書き換える（入力欄は作り直さないのでカーソルやキーボードが乱れない）
+function update() {
+  const m = state.cfg[state.tab], inp = state.input[state.tab];
+  document.getElementById('stop').textContent = m.situations.find(s => s.id === sitOf()).stop;
+  document.getElementById('memo').textContent = m.memo;
+  const results = m.counters.map(c => {
+    const r = judge(m, c, Number(inp[c.id]) || 0);
+    document.getElementById(`res-${c.id}`).innerHTML = `<table>
+      ${r.ev != null ? `<tr class="big"><td>期待値</td><td style="color:var(--${r.level})">${yen(r.ev)}</td></tr>` : ''}
+      <tr><td>天井</td><td>${r.ceil}${c.unit}</td></tr>
+      <tr><td>天井まで</td><td>${r.remain}${c.unit}</td></tr>
+      <tr><td>天井までの投資目安${c.unit === 'G' ? '' : '（1あべし=1G換算・多め）'}</td><td>${yen(r.cost).replace('+', '')}</td></tr>
+      ${r.aim != null ? `<tr><td>狙い目</td><td>${r.aim}${c.unit}〜</td></tr>` : ''}
+    </table>`;
+    return r;
+  });
+  const order = { good: 3, warn: 2, bad: 1, none: 0 };
+  const best = results.reduce((a, b) => order[b.level] > order[a.level] ? b : a).level;
+  const label = { good: '◎ 狙い目', warn: '△ 微妙', bad: '× 見送り', none: '判定データなし' }[best];
+  const v = document.getElementById('verdict');
+  v.className = `verdict v-${best}`;
+  v.textContent = label;
 }
 
 function settingsHtml(m, sit) {
@@ -260,6 +271,9 @@ document.addEventListener('click', e => {
   else if (d.step) {
     const inp = state.input[state.tab];
     inp[d.step] = Math.max(0, (Number(inp[d.step]) || 0) + Number(d.d));
+    document.querySelector(`[data-in="${d.step}"]`).value = inp[d.step];
+    save(); update();
+    return;
   } else if (d.resetcfg) {
     if (!confirmReset) { confirmReset = true; t.textContent = 'もう一度押すと初期値に戻します'; return; }
     state.cfg[state.tab] = structuredClone(DEFAULTS[state.tab]);
@@ -270,23 +284,15 @@ document.addEventListener('click', e => {
 
 document.addEventListener('input', e => {
   const t = e.target, d = t.dataset, m = state.cfg[state.tab];
-  if (d.in) {
-    // ゲーム数は打つたびに結果を更新し、同じ入力欄にフォーカスを戻す
-    state.input[state.tab][d.in] = t.value;
-    save(); render();
-    document.querySelector(`[data-in="${d.in}"]`).focus();
-    return;
-  }
-  // 設定欄は入力中に再描画しない（キーボードが閉じないように）。確定時に change で再描画
-  if (d.cfg) m[d.cfg] = d.cfg === 'memo' ? t.value : (Number(t.value) || DEFAULTS[state.tab][d.cfg]);
+  if (d.in) state.input[state.tab][d.in] = t.value;
+  else if (d.cfg) m[d.cfg] = d.cfg === 'memo' ? t.value : (Number(t.value) || DEFAULTS[state.tab][d.cfg]);
   else if (d.stop) m.situations.find(s => s.id === d.stop).stop = t.value;
   else if (d.ceil) m.counters.find(c => c.id === d.ceil).ceil[sitOf()] = Number(t.value) || 0;
   else if (d.aim) { if (t.value !== '') m.aim[d.aim] = Number(t.value); else delete m.aim[d.aim]; }
   else if (d.ev) m.ev[d.ev] = t.value;
   else return;
-  save();
+  save(); update();
 });
-document.addEventListener('change', () => render());
 
 render();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');
