@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111418">
+<title>期待値チェッカー</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg: #111418; --card: #1b2027; --line: #2c333d; --text: #e9edf2; --sub: #9aa4b2;
+    --accent: #4da3ff; --good: #2ecc71; --warn: #f1c40f; --bad: #e74c3c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    padding: 12px 16px calc(24px + env(safe-area-inset-bottom)); }
+  h1 { font-size: 18px; margin: 4px 0 12px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+  .tabs button { flex: 1; padding: 12px 6px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--card); color: var(--sub); font-size: 15px; font-weight: 600; }
+  .tabs button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+  .row { margin-bottom: 10px; }
+  .row:last-child { margin-bottom: 0; }
+  .row > label { display: block; font-size: 12px; color: var(--sub); margin-bottom: 4px; }
+  label { font-size: 13px; color: var(--sub); }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; margin-bottom: 4px; }
+  input[type=number], textarea { width: 100%; background: #0d1014; color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 12px; font-size: 22px; }
+  textarea { font-size: 15px; min-height: 90px; font-family: ui-monospace, monospace; }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .seg button { flex: 1 1 auto; padding: 10px 8px; background: #161a20; color: var(--sub); border: 1px solid var(--line);
+    border-radius: 8px; font-size: 14px; }
+  .seg button.on { background: #2a3a4f; color: var(--text); border-color: var(--accent); font-weight: 600; }
+  .step { display: flex; gap: 6px; margin-top: 6px; }
+  .step button { flex: 1; padding: 10px 0; border-radius: 8px; border: 1px solid var(--line); background: #222831; color: var(--text); font-size: 14px; }
+  .verdict { font-size: 26px; font-weight: 800; text-align: center; padding: 10px; border-radius: 10px; margin-bottom: 10px; }
+  .v-good { background: rgba(46,204,113,.15); color: var(--good); }
+  .v-warn { background: rgba(241,196,15,.15); color: var(--warn); }
+  .v-bad  { background: rgba(231,76,60,.12); color: var(--bad); }
+  .v-none { background: #222831; color: var(--sub); font-size: 18px; }
+  .stop { font-size: 14px; background: #222831; border-radius: 8px; padding: 10px; margin-bottom: 12px; line-height: 1.5; }
+  .stop b { color: var(--warn); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td { padding: 7px 4px; border-bottom: 1px solid var(--line); }
+  td:last-child { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .big td:last-child { font-size: 20px; }
+  .note { font-size: 12px; color: var(--sub); line-height: 1.6; }
+  details summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .grid2 input { font-size: 17px; padding: 9px; }
+  .btn { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--line); background: #222831; color: var(--text); font-size: 14px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<h1>期待値チェッカー</h1>
+<div class="tabs" id="tabs"></div>
+<div id="app"></div>
+
+<script>
+// 北斗転生2 表示あべし別の天井期待値（設定1）。出典: スロッターの道具箱
+// [あべし, 等価, 5.6枚持ちメダル, 5.6枚現金, 前兆抜け後なら1]
+const HOKUTO_EV = {
+  normal: [[0,-838,-748,-1993],[128,243,217,-912,1],[193,1176,1050,20],[256,-814,-727,-1970,1],[400,1060,947,-95],
+    [512,2719,2427,1563],[576,1578,1409,423,1],[600,1930,1723,775],[650,2665,2380,1510],[700,3402,3038,2247],
+    [800,4403,3931,3247],[896,3385,3023,2230,1],[1000,4937,4408,3782],[1100,6439,5749,5284],[1200,7942,7091,6787],
+    [1280,8711,7777,7556,1],[1400,10143,9057,8988],[1472,10279,9178,9124]],
+  reset: [[0,915,817,-240],[50,1593,1422,438],[70,1801,1608,645],[100,1875,1674,720],[128,1932,1725,777,1],
+    [160,2409,2151,1254],[193,2868,2560,1713],[256,863,770,-293,1],[320,1798,1605,643],[400,2722,2430,1567],
+    [500,4200,3750,3045],[576,3133,2797,1977,1],[600,3488,3114,2333],[700,4976,4443,3821],[800,6124,5468,4969],
+    [896,6027,5381,4872,1],[1000,7345,6558,6190],[1100,8671,7742,7516],[1200,10035,8959,8879],[1216,10279,9178,9124]],
+};
+// 前兆抜けの行はゾーン+1に置き、値が下がる場合はゾーン直前まで前の値を据え置く
+function evText(rows, col) {
+  const out = [];
+  for (const r of rows) {
+    const v = r[col], prev = out[out.length - 1];
+    if (r[4]) { if (prev && v < prev[1]) out.push([r[0], prev[1]]); out.push([r[0] + 1, v]); }
+    else out.push([r[0], v]);
+  }
+  return out.map(p => p.join(',')).join('\n');
+}
+function hokutoEv() {
+  const ev = {};
+  for (const sit of ['normal', 'reset']) ['eq', '56m', '56c'].forEach((rate, i) => ev[`abeshi_${rate}_${sit}`] = evText(HOKUTO_EV[sit], i + 1));
+  return ev;
+}
+// リコリコはG数別の円期待値が未公開のため、状況別の狙い目G数だけ持つ（全交換率共通）
+function lycoAim() {
+  const base = { normal: 480, kakenuke: 70, reset: 70, czfail: 0, upperat: 0 };
+  const aim = {};
+  for (const sit in base) for (const rate of ['eq', '56m', '56c']) aim[`at_${rate}_${sit}`] = base[sit];
+  return aim;
+}
+
+const RATES = [{ id: 'eq', label: '等価' }, { id: '56m', label: '5.6枚 持ちメダル' }, { id: '56c', label: '5.6枚 現金' }];
+
+const DEFAULTS = {
+  lyco: {
+    name: 'リコリコ',
+    full: 'スマスロ リコリス・リコイル',
+    coin: 31.8, // 1000円あたりのG数
+    situations: [
+      { id: 'normal', label: '通常（AT連チャン後）', stop: 'AT当選まで。AT後は100Gまで様子見' },
+      { id: 'kakenuke', label: 'AT駆け抜け後', stop: '天井短縮（AT間600G／CZ間250G）。CZ間250Gが本命' },
+      { id: 'reset', label: 'リセット', stop: '天井短縮（AT間600G／CZ間250G）。液晶は0G表示でも内部は加算済み' },
+      { id: 'czfail', label: '上位CZ失敗後', stop: '最優先。250G+αまで回す（到達で成功濃厚CZ）' },
+      { id: 'upperat', label: '上位AT終了後', stop: '100G+αまで回す（ここでのAT当選は上位AT復帰）' },
+    ],
+    counters: [
+      { id: 'cz', label: 'CZ間ゲーム数', unit: 'G', ceil: { normal: 600, kakenuke: 250, reset: 250, czfail: 600, upperat: 600 } },
+      { id: 'at', label: 'AT間ゲーム数', unit: 'G', ceil: { normal: 850, kakenuke: 600, reset: 600, czfail: 250, upperat: 850 } },
+    ],
+    threshold: 1000,
+    aim: lycoAim(),
+    ev: {},
+    memo: '出典：スロベース／wanichan(note)／ナナプレス（設定1の理論値）\n\n機械割（設定1）\n・300G〜850G：100.3%\n・400G〜850G：106.1%\n・上位CZ失敗後 0G〜250G：103.9%\n・上位AT終了後 0G〜850G：105.1%\n・ゾーン 50Gから100Gまで：105.7%\n・ゾーン 150Gから250Gまで：101.0%\n\nCZ抽選ゾーン：100 / 250 / 400 / 600 / 750G（250Gまでで約90%）\nAT間天井の振り分け：250 / 400 / 600 / 750 / 850G\nスタンプMAX（リプレイ12回）でCZ抽選\n\nG数別の円期待値はどのサイトも未公開（2026/11時点）。交換率による違いもまだ出ていない。',
+  },
+  hokuto: {
+    name: '北斗転生2',
+    full: 'スマスロ 北斗の拳 転生の章2',
+    coin: 31.5,
+    situations: [
+      { id: 'normal', label: '通常', stop: 'AT当選まで' },
+      { id: 'reset', label: 'リセット', stop: 'AT当選まで（天井1280あべし）' },
+    ],
+    counters: [
+      { id: 'abeshi', label: '表示あべし（液晶）', unit: 'あべし', ceil: { normal: 1536, reset: 1280 } },
+    ],
+    threshold: 1000,
+    aim: {},
+    ev: hokutoEv(),
+    memo: '出典：スロッターの道具箱（設定1・31.5G/50枚・AT後の余剰あべし処理後の液晶表示が基準）\n\n天井：1536あべし+α（リセット時1280あべし）\nモード天井：通常A 1536 / 通常B 896 / 通常C 576 / 天国 128\n193〜256あべしは全モード共通で期待度が高い\n\n期待値表の128・256・576・896・1280は「そのゾーンの前兆を抜けた後」の値。ゾーン前兆を抜けた直後は期待値が下がる（例：等価 256抜け後 -814円）。ゾーン直前は前の行の値を仮に入れている',
+  },
+};
+
+const STORE_KEY = 'pachi-ev-v2';
+let state = load();
+
+function load() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(STORE_KEY)); } catch (e) {}
+  const s = { tab: 'lyco', rate: 'eq', sit: {}, input: {}, cfg: structuredClone(DEFAULTS) };
+  if (saved) {
+    Object.assign(s, { tab: saved.tab || s.tab, rate: saved.rate || s.rate, sit: saved.sit || {}, input: saved.input || {} });
+    for (const k in s.cfg) if (saved.cfg && saved.cfg[k]) s.cfg[k] = { ...s.cfg[k], ...saved.cfg[k] };
+  }
+  return s;
+}
+function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {} }
+
+const yen = n => (n < 0 ? '-' : '+') + '¥' + Math.abs(Math.round(n)).toLocaleString();
+const sitOf = () => state.sit[state.tab] || state.cfg[state.tab].situations[0].id;
+const key = cid => `${cid}_${state.rate}_${sitOf()}`;
+
+// "G,円" の行から線形補間で期待値を出す
+function evFromTable(text, x) {
+  if (!text) return null;
+  const pts = text.split('\n').map(l => l.split(/[,\s]+/).map(Number)).filter(p => p.length >= 2 && !isNaN(p[0]) && !isNaN(p[1])).sort((a, b) => a[0] - b[0]);
+  if (!pts.length) return null;
+  if (x <= pts[0][0]) return pts[0][1];
+  for (let i = 1; i < pts.length; i++) {
+    if (x <= pts[i][0]) { const [x0, y0] = pts[i - 1], [x1, y1] = pts[i]; return y0 + (y1 - y0) * (x - x0) / (x1 - x0); }
+  }
+  return pts[pts.length - 1][1];
+}
+
+function judge(m, c, val) {
+  const ceil = c.ceil[sitOf()];
+  const remain = Math.max(0, ceil - val);
+  const cost = remain / m.coin * 1000;
+  const aim = m.aim[key(c.id)];
+  const ev = evFromTable(m.ev[key(c.id)], val);
+  let level = 'none';
+  if (ev != null) level = ev >= m.threshold ? 'good' : ev >= 0 ? 'warn' : 'bad';
+  else if (aim != null) level = val >= aim ? 'good' : val >= aim - 100 ? 'warn' : 'bad';
+  return { ceil, remain, cost, aim, ev, level };
+}
+
+function render() {
+  document.getElementById('tabs').innerHTML = Object.entries(state.cfg).map(([k, m]) =>
+    `<button class="${state.tab === k ? 'on' : ''}" data-tab="${k}">${m.name}</button>`).join('');
+  const m = state.cfg[state.tab];
+  const inp = state.input[state.tab] || (state.input[state.tab] = {});
+  const sit = m.situations.find(s => s.id === sitOf());
+
+  let html = `<div class="card">
+    <div class="row"><label>交換率</label><div class="seg">
+      ${RATES.map(r => `<button data-rate="${r.id}" class="${state.rate === r.id ? 'on' : ''}">${r.label}</button>`).join('')}</div></div>
+    <div class="row"><label>状況</label><div class="seg">
+      ${m.situations.map(s => `<button data-sit="${s.id}" class="${sit.id === s.id ? 'on' : ''}">${s.label}</button>`).join('')}</div></div>
+  </div>`;
+
+  const results = [];
+  for (const c of m.counters) {
+    const val = Number(inp[c.id]) || 0;
+    const r = judge(m, c, val);
+    results.push(r);
+    html += `<div class="card">
+      <div class="field"><label>${c.label}</label>
+        <input type="number" inputmode="numeric" data-in="${c.id}" value="${inp[c.id] ?? ''}" placeholder="0">
+        <div class="step">${[-100, -10, 10, 50, 100].map(d => `<button data-step="${c.id}" data-d="${d}">${d > 0 ? '+' : ''}${d}</button>`).join('')}</div>
+      </div>
+      <table>
+        ${r.ev != null ? `<tr class="big"><td>期待値</td><td style="color:var(--${r.level})">${yen(r.ev)}</td></tr>` : ''}
+        <tr><td>天井</td><td>${r.ceil}${c.unit}</td></tr>
+        <tr><td>天井まで</td><td>${r.remain}${c.unit}</td></tr>
+        <tr><td>天井までの投資目安${c.unit === 'G' ? '' : '（1あべし=1G換算・多め）'}</td><td>${yen(r.cost).replace('+', '')}</td></tr>
+        ${r.aim != null ? `<tr><td>狙い目</td><td>${r.aim}${c.unit}〜</td></tr>` : ''}
+      </table></div>`;
+  }
+
+  const order = { good: 3, warn: 2, bad: 1, none: 0 };
+  const best = results.reduce((a, b) => order[b.level] > order[a.level] ? b : a).level;
+  const label = { good: '◎ 狙い目', warn: '△ 微妙', bad: '× 見送り', none: '判定データなし' }[best];
+  html = `<div class="verdict v-${best}">${label}</div><div class="stop"><b>やめどき：</b>${esc(sit.stop)}</div>` + html;
+
+  html += `<div class="card"><details><summary>機種メモ</summary><p class="note" style="white-space:pre-wrap">${esc(m.memo)}</p></details></div>`;
+  html += settingsHtml(m, sit);
+  html += `<p class="note">${m.full}／コイン持ち ${m.coin}G/1000円で計算。期待値表がある場合は「${yen(m.threshold)}以上で◎、0円以上で△」、ない場合は狙い目G数で判定。数値は解析サイトの設定1理論値で、勝ちを保証するものではありません。</p>`;
+  document.getElementById('app').innerHTML = html;
+}
+
+function settingsHtml(m, sit) {
+  const rateName = RATES.find(r => r.id === state.rate).label;
+  let h = `<div class="card"><details><summary>設定（${rateName}・${sit.label}）</summary>
+    <div class="grid2" style="margin-top:10px">
+      <div><label>コイン持ち（G/1000円）</label><input type="number" step="0.1" inputmode="decimal" data-cfg="coin" value="${m.coin}"></div>
+      <div><label>◎にする期待値（円）</label><input type="number" inputmode="numeric" data-cfg="threshold" value="${m.threshold}"></div>
+    </div>
+    <div class="field" style="margin-top:8px"><label>やめどき（${sit.label}）</label><textarea data-stop="${sit.id}" style="min-height:60px">${esc(sit.stop)}</textarea></div>`;
+  for (const c of m.counters) {
+    const k = key(c.id);
+    h += `<p style="margin:14px 0 6px;font-weight:600">${c.label}</p>
+      <div class="grid2">
+        <div><label>天井（${sit.label}）</label><input type="number" inputmode="numeric" data-ceil="${c.id}" value="${c.ceil[sit.id]}"></div>
+        <div><label>狙い目</label><input type="number" inputmode="numeric" data-aim="${k}" value="${m.aim[k] ?? ''}" placeholder="なし"></div>
+      </div>
+      <div class="field" style="margin-top:8px"><label>期待値表 1行に「${c.unit},円」</label>
+        <textarea data-ev="${k}" placeholder="例:\n600,-1500\n800,500\n1000,3000">${esc(m.ev[k] || '')}</textarea></div>`;
+  }
+  h += `<div class="field"><label>機種メモ</label><textarea data-cfg="memo" style="min-height:160px">${esc(m.memo)}</textarea></div>
+    <button class="btn" data-resetcfg="1">この機種の設定を初期値に戻す</button></details></div>`;
+  return h;
+}
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+let confirmReset = false;
+document.addEventListener('click', e => {
+  const t = e.target.closest('button'); if (!t) return;
+  const d = t.dataset;
+  if (d.tab) state.tab = d.tab;
+  else if (d.rate) state.rate = d.rate;
+  else if (d.sit) state.sit[state.tab] = d.sit;
+  else if (d.step) {
+    const inp = state.input[state.tab];
+    inp[d.step] = Math.max(0, (Number(inp[d.step]) || 0) + Number(d.d));
+  } else if (d.resetcfg) {
+    if (!confirmReset) { confirmReset = true; t.textContent = 'もう一度押すと初期値に戻します'; return; }
+    state.cfg[state.tab] = structuredClone(DEFAULTS[state.tab]);
+  } else return;
+  confirmReset = false;
+  save(); render();
+});
+
+document.addEventListener('input', e => {
+  const t = e.target, d = t.dataset, m = state.cfg[state.tab];
+  if (d.in) {
+    // ゲーム数は打つたびに結果を更新し、同じ入力欄にフォーカスを戻す
+    state.input[state.tab][d.in] = t.value;
+    save(); render();
+    document.querySelector(`[data-in="${d.in}"]`).focus();
+    return;
+  }
+  // 設定欄は入力中に再描画しない（キーボードが閉じないように）。確定時に change で再描画
+  if (d.cfg) m[d.cfg] = d.cfg === 'memo' ? t.value : (Number(t.value) || DEFAULTS[state.tab][d.cfg]);
+  else if (d.stop) m.situations.find(s => s.id === d.stop).stop = t.value;
+  else if (d.ceil) m.counters.find(c => c.id === d.ceil).ceil[sitOf()] = Number(t.value) || 0;
+  else if (d.aim) { if (t.value !== '') m.aim[d.aim] = Number(t.value); else delete m.aim[d.aim]; }
+  else if (d.ev) m.ev[d.ev] = t.value;
+  else return;
+  save();
+});
+document.addEventListener('change', () => render());
+
+render();
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>
