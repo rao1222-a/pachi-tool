@@ -251,6 +251,7 @@ function load() {
   const s = { tab: 'lyco', rate: 'eq', sit: {}, input: {}, over: {}, ...(saved || {}) };
   if (!DEFAULTS[s.tab]) s.tab = 'lyco';
   if (!RATES.some(r => r.id === s.rate)) s.rate = 'eq';
+  if (!(s.lend > 0)) s.lend = 46; // 1000円あたりの貸し枚数
   s.cfg = {};
   for (const k in DEFAULTS) s.cfg[k] = buildCfg(k, s.over[k]);
   return s;
@@ -272,6 +273,9 @@ const sitOf = () => {
   return m.situations.some(s => s.id === id) ? id : m.situations[0].id;
 };
 const key = cid => `${cid}_${state.rate}_${sitOf()}`;
+// m.coin は50枚あたりのG数。貸し枚数に合わせて1000円あたりのG数にする
+const gPer1000 = m => m.coin * state.lend / 50;
+const hallLabel = () => `${RATES.find(r => r.id === state.rate).label}・${state.lend}枚貸し`;
 
 // "G,円" の行から線形補間で期待値を出す
 function evFromTable(text, x) {
@@ -289,9 +293,11 @@ function judge(m, c, val) {
   const ceil = c.ceil[sitOf()];
   if (val == null) return { ceil, level: 'none', empty: true };
   const remain = Math.max(0, ceil - val);
-  const cost = remain / m.coin * 1000;
+  const cost = remain / gPer1000(m) * 1000;
   const aim = m.aim[key(c.id)];
-  const ev = evFromTable(m.ev[key(c.id)], val);
+  // 表は50枚貸し等価（1枚20円）で計算されているので、等価なら1枚あたりの円に合わせて換算
+  let ev = evFromTable(m.ev[key(c.id)], val);
+  if (ev != null && state.rate === 'eq') ev = ev * 50 / state.lend;
   let level = 'none';
   if (ev != null) level = ev >= m.threshold ? 'good' : ev >= 0 ? 'warn' : 'bad';
   else if (aim != null) level = val >= aim ? 'good' : val >= aim - 100 ? 'warn' : 'bad';
@@ -306,8 +312,12 @@ function render() {
   const sit = m.situations.find(s => s.id === sitOf());
 
   let html = `<div class="card">
-    <div class="row"><label>交換率</label><div class="seg">
-      ${RATES.map(r => `<button data-rate="${r.id}" class="${state.rate === r.id ? 'on' : ''}">${r.label}</button>`).join('')}</div></div>
+    <details class="row" id="hall"><summary style="font-size:13px;color:var(--sub)">ホール：${hallLabel()}</summary>
+      <div class="seg" style="margin-top:8px">
+        ${RATES.map(r => `<button data-rate="${r.id}" class="${state.rate === r.id ? 'on' : ''}">${r.label}</button>`).join('')}</div>
+      <div class="field" style="margin-top:8px"><label>1000円あたりの貸し枚数</label>
+        <input type="number" inputmode="numeric" data-lend="1" value="${state.lend}" style="font-size:17px;padding:9px"></div>
+    </details>
     <div class="row"><label>状況</label><div class="seg">
       ${m.situations.map(s => `<button data-sit="${s.id}" class="${sit.id === s.id ? 'on' : ''}">${s.label}</button>`).join('')}</div></div>
   </div>`;
@@ -337,7 +347,8 @@ function update() {
   const m = state.cfg[state.tab], inp = state.input[state.tab];
   document.getElementById('stop').textContent = m.situations.find(s => s.id === sitOf()).stop;
   document.getElementById('memo').textContent = m.memo;
-  document.getElementById('foot').textContent = `${m.full}／コイン持ち ${m.coin}G/1000円で計算。期待値表がある場合は「${yen(m.threshold)}以上で◎、0円以上で△」、ない場合は狙い目G数で判定。数値は解析サイトの設定1理論値で、勝ちを保証するものではありません。`;
+  document.getElementById('hall').querySelector('summary').textContent = `ホール：${hallLabel()}`;
+  document.getElementById('foot').textContent = `${m.full}／${hallLabel()}（コイン持ち ${m.coin}G/50枚 → ${gPer1000(m).toFixed(1)}G/1000円）で計算。${state.rate === 'eq' ? `期待値は50枚貸し等価の表を×50/${state.lend}で換算。` : ''}期待値表がある場合は「${yen(m.threshold)}以上で◎、0円以上で△」、ない場合は狙い目G数で判定。数値は解析サイトの設定1理論値で、勝ちを保証するものではありません。`;
   const results = m.counters.map(c => {
     const raw = inp[c.id];
     const r = judge(m, c, raw === '' || raw == null || isNaN(Number(raw)) ? null : Math.max(0, Number(raw)));
@@ -365,7 +376,7 @@ function settingsHtml(m, sit) {
   const rateName = RATES.find(r => r.id === state.rate).label;
   let h = `<div class="card"><details><summary>設定（${rateName}・${sit.label}）</summary>
     <div class="grid2" style="margin-top:10px">
-      <div><label>コイン持ち（G/1000円）</label><input type="number" step="0.1" inputmode="decimal" data-cfg="coin" value="${m.coin}"></div>
+      <div><label>コイン持ち（G/50枚）</label><input type="number" step="0.1" inputmode="decimal" data-cfg="coin" value="${m.coin}"></div>
       <div><label>◎にする期待値（円）</label><input type="number" inputmode="numeric" data-cfg="threshold" value="${m.threshold}"></div>
     </div>
     <div class="field" style="margin-top:8px"><label>やめどき（${sit.label}）</label><textarea data-stop="${sit.id}" style="min-height:60px">${esc(sit.stop)}</textarea></div>`;
@@ -416,6 +427,7 @@ document.addEventListener('click', e => {
 document.addEventListener('input', e => {
   const t = e.target, d = t.dataset, v = t.value, n = parseFloat(v);
   if (d.in) state.input[state.tab][d.in] = v;
+  else if (d.lend) { if (!(n > 0)) return; state.lend = n; }
   else if (d.cfg === 'memo') setOver(o => o.memo = v);
   else if (d.cfg) {
     // 入力途中の空欄や不正値は無視（0 は有効。コイン持ちだけは 0 以下を不可）
