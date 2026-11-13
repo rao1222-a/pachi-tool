@@ -1,6 +1,6 @@
 // オフライン（ホール内の電波が弱い場所）でも開けるようにキャッシュする
-const CACHE = 'pachi-ev-v3';
-const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
+const CACHE = 'pachi-ev-v4';
+const FILES = ['./', 'index.html', 'machines.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
   self.skipWaiting();

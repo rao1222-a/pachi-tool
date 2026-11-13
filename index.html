@@ -22,6 +22,12 @@
   .tabs button { flex: 1 1 30%; padding: 12px 6px; border-radius: 10px; border: 1px solid var(--line);
     background: var(--card); color: var(--sub); font-size: 15px; font-weight: 600; }
   .tabs button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .tabs button.find { flex-basis: 100%; color: var(--text); }
+  #q { width: 100%; background: #0d1014; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 12px; font-size: 17px; }
+  #list { max-height: 60vh; overflow-y: auto; margin-top: 8px; }
+  #list button { display: block; width: 100%; text-align: left; background: transparent; color: var(--text); border: 0;
+    border-bottom: 1px solid var(--line); padding: 12px 4px; font-size: 15px; }
+  #list button small { color: var(--sub); margin-left: 6px; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
   .row { margin-bottom: 10px; }
   .row:last-child { margin-bottom: 0; }
@@ -64,8 +70,14 @@
 <body>
 <h1>期待値チェッカー</h1>
 <div class="tabs" id="tabs"></div>
+<div class="card" id="finder" hidden>
+  <input type="search" id="q" placeholder="機種名で検索（例：カバネリ）" autocomplete="off">
+  <div id="list"></div>
+</div>
 <div id="app"></div>
 
+<!-- 追加機種のデータ（tools/convert.js で調査結果から生成） -->
+<script src="machines.js"></script>
 <script>
 // 北斗転生2 表示あべし別の天井期待値（設定1）。出典: スロッターの道具箱
 // [あべし, 等価, 5.6枚持ちメダル, 5.6枚現金, 前兆抜け後なら1]
@@ -332,6 +344,8 @@ const DEFAULTS = {
   },
 };
 
+Object.assign(DEFAULTS, window.EXTRA_MACHINES || {});
+
 // 保存するのはユーザーが変えた値（over）だけ。初期値はコード側の DEFAULTS を毎回使うので、更新がスマホにも反映される
 // over: { 機種: { coin, threshold, memo, aim:{}, ev:{}, stop:{状況:文}, ceil:{counter:{状況:数}} } }
 const STORE_KEY = 'pachi-ev-v3';
@@ -407,8 +421,11 @@ function judge(m, c, val) {
 }
 
 function render() {
-  document.getElementById('tabs').innerHTML = Object.entries(state.cfg).map(([k, m]) =>
-    `<button class="${state.tab === k ? 'on' : ''}" data-tab="${k}">${m.name}</button>`).join('');
+  // タブは最近使った機種だけ。ほかは「機種を探す」から選ぶ
+  state.recent = [state.tab, ...(state.recent || []).filter(k => k !== state.tab && state.cfg[k])].slice(0, 6);
+  document.getElementById('tabs').innerHTML = state.recent.map(k =>
+    `<button class="${state.tab === k ? 'on' : ''}" data-tab="${k}">${state.cfg[k].name}</button>`).join('') +
+    `<button class="find" data-find="1">🔍 機種を探す（${Object.keys(state.cfg).length}）</button>`;
   const m = state.cfg[state.tab];
   const inp = state.input[state.tab] || (state.input[state.tab] = {});
   const sit = m.situations.find(s => s.id === sitOf());
@@ -502,12 +519,38 @@ function settingsHtml(m, sit) {
 
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
+// 検索用の読みがな（漢字・英字の機種名をひらがなでも探せるように）
+const YOMI = {
+  lyco: 'りこりすりこいる', hokuto: 'ほくとのけんてんせいのしょう', hokuto1: 'すますろほくとのけん', monkey: 'もんきーたーん',
+  ghoul: 'とうきょうぐーる', kabaneri_unato: 'かばねりうなとけっせん', karakuri2: 'からくりさーかす', mh_sunbreak: 'もんはんさんぶれいく',
+  godeater_r: 'ごっどいーたー', milliongod_kiseki: 'みりおんごっどみりごきせき', valvrave2: 'ばるぶれいぶゔぁるゔれいゔ', juoh: 'じゅうおう',
+  gojieva2: 'ごじらたいえゔぁんげりおんごじえば', ggo: 'そーどあーとがんげいるおんらいん', ragna: 'らぐなどーる', vivy: 'びびぃゔぃゔぃ',
+  seiya12: 'せいんとせいやおうごんじゅうにきゅう', otome5: 'せんごくおとめ', sao2: 'そーどあーとおんらいん', shinuchi: 'しんうちよしむね',
+  enen2: 'えんえんのしょうぼうたい', magireco: 'まぎあれこーどまどかまぎか', bakemono: 'ばけものがたり',
+};
+// 機種検索。ひらがな・カタカナ・全角半角の違いを吸収して部分一致
+const norm = s => s.normalize('NFKC').toLowerCase().replace(/[ぁ-ゖ]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60)).replace(/[\s・　]/g, '');
+function renderList() {
+  const q = norm(document.getElementById('q').value);
+  document.getElementById('list').innerHTML = Object.entries(state.cfg)
+    .filter(([k, m]) => !q || norm(m.name + m.full + (YOMI[k] || '')).includes(q))
+    .map(([k, m]) => `<button data-tab="${k}">${esc(m.name)}<small>${esc(m.full)}</small></button>`).join('') || '<p class="note">見つかりません</p>';
+}
+document.getElementById('q').addEventListener('input', renderList);
+
 let confirmReset = false;
 document.addEventListener('click', e => {
   const t = e.target.closest('button'); if (!t) return;
   const d = t.dataset;
+  const finder = document.getElementById('finder');
+  if (d.find) {
+    finder.hidden = !finder.hidden;
+    if (!finder.hidden) { document.getElementById('q').value = ''; renderList(); document.getElementById('q').focus(); }
+    return;
+  }
+  if (d.tab) finder.hidden = true;
   if (t.classList.contains('on')) return; // 選択中のボタンは何もしない
-  if (d.tab) state.tab = d.tab;
+  if (d.tab) { state.tab = d.tab; window.scrollTo(0, 0); }
   else if (d.rate) state.rate = d.rate;
   else if (d.sit) state.sit[state.tab] = d.sit;
   else if (d.step) {
