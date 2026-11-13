@@ -24,7 +24,7 @@
   .tabs button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
   .tabs button.find { flex-basis: 100%; color: var(--text); }
   #q { width: 100%; background: #0d1014; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 12px; font-size: 17px; }
-  #list { max-height: 60vh; overflow-y: auto; margin-top: 8px; }
+  #list { max-height: 40vh; max-height: 40dvh; overflow-y: auto; margin-top: 8px; }
   #list button { display: block; width: 100%; text-align: left; background: transparent; color: var(--text); border: 0;
     border-bottom: 1px solid var(--line); padding: 12px 4px; font-size: 15px; }
   #list button small { color: var(--sub); margin-left: 6px; }
@@ -154,7 +154,7 @@ const DEFAULTS = {
   lyco: {
     name: 'リコリコ',
     full: 'スマスロ リコリス・リコイル',
-    coin: 31.8, // 1000円あたりのG数
+    coin: 31.8, // 50枚あたりのG数
     situations: [
       { id: 'normal', label: '通常（AT連チャン後）', stop: 'AT当選まで。AT後は100Gまで様子見' },
       { id: 'kakenuke', label: 'AT駆け抜け後', stop: '天井短縮（AT間600G／CZ間250G）。CZ間250Gが本命' },
@@ -416,14 +416,22 @@ function judge(m, c, val) {
   if (ev != null && state.rate === 'eq') ev = ev * 50 / state.lend;
   let level = 'none';
   if (ev != null) level = ev >= m.threshold ? 'good' : ev >= 0 ? 'warn' : 'bad';
-  else if (aim != null) level = val >= aim ? 'good' : val >= aim - 100 ? 'warn' : 'bad';
+  // 「あと少し」の幅はG数・あべしだけ。回数や周期は狙い目に届かなければ×
+  else if (aim != null) {
+    const near = c.unit === 'G' || c.unit === 'あべし' ? 100 : 0;
+    level = val >= aim ? 'good' : near && val >= aim - near ? 'warn' : 'bad';
+  }
   return { ceil, remain, cost, aim, ev, level };
 }
 
 function render() {
   // タブは最近使った機種だけ。ほかは「機種を探す」から選ぶ
-  state.recent = [state.tab, ...(state.recent || []).filter(k => k !== state.tab && state.cfg[k])].slice(0, 6);
-  document.getElementById('tabs').innerHTML = state.recent.map(k =>
+  // 並びは固定（押した機種を先頭に動かさない）。新しい機種のときだけ先頭に足して古いものを外す
+  // 読み込めない機種もすぐには消さず、表示だけ外す
+  const recent = state.recent || [];
+  if (!recent.includes(state.tab)) recent.unshift(state.tab);
+  state.recent = recent.slice(0, 8);
+  document.getElementById('tabs').innerHTML = state.recent.filter(k => state.cfg[k]).slice(0, 6).map(k =>
     `<button class="${state.tab === k ? 'on' : ''}" data-tab="${k}">${state.cfg[k].name}</button>`).join('') +
     `<button class="find" data-find="1">🔍 機種を探す（${Object.keys(state.cfg).length}）</button>`;
   const m = state.cfg[state.tab];
@@ -470,17 +478,22 @@ function update() {
   document.getElementById('stop').textContent = m.situations.find(s => s.id === sitOf()).stop;
   document.getElementById('memo').textContent = m.memo;
   document.getElementById('hall').querySelector('summary').textContent = `ホール：${hallLabel()}`;
-  document.getElementById('foot').textContent = `${m.full}／${hallLabel()}（コイン持ち ${m.coin}G/50枚 → ${gPer1000(m).toFixed(1)}G/1000円）で計算。${state.rate === 'eq' ? `期待値は50枚貸し等価の表を×50/${state.lend}で換算。` : ''}期待値表がある場合は「${yen(m.threshold)}以上で◎、0円以上で△」、ない場合は狙い目G数で判定。数値は解析サイトの設定1理論値で、勝ちを保証するものではありません。`;
+  document.getElementById('foot').textContent = `${m.full}／${hallLabel()}（コイン持ち ${m.coin}G/50枚${m.coinGuess ? '※未確認の仮値' : ''} → ${gPer1000(m).toFixed(1)}G/1000円）で計算。${state.rate === 'eq' ? `期待値は50枚貸し等価の表を×50/${state.lend}で換算。` : state.lend !== 50 ? `5.6枚の表は50枚貸し基準なので、${state.lend}枚貸しでは実際は表より低め。` : ''}期待値表がある場合は「${yen(m.threshold)}以上で◎、0円以上で△」、ない場合は狙い目G数で判定。数値は解析サイトの設定1理論値で、勝ちを保証するものではありません。`;
   const results = m.counters.map(c => {
     const raw = inp[c.id];
     const r = judge(m, c, raw === '' || raw == null || isNaN(Number(raw)) ? null : Math.max(0, Number(raw)));
     const el = document.getElementById(`res-${c.id}`);
-    if (r.empty) { el.innerHTML = `<table><tr><td>天井</td><td>${r.ceil}${c.unit}</td></tr></table>`; return r; }
+    // 天井が調査で分からず通常時の値を仮置きした状況は、そうと分かるように出す
+    const ceilTd = `${r.ceil}${c.unit}${(c.guess || []).includes(sitOf()) ? '<br><small style="color:var(--warn)">未確認・通常時の値を仮置き</small>' : ''}`;
+    if (r.empty) { el.innerHTML = `<table><tr><td>天井</td><td>${ceilTd}</td></tr></table>`; return r; }
+    // 投資目安はゲーム数系のカウンターだけ（回数・周期・ptでは意味がない）
+    const costRow = c.unit === 'G' ? `<tr><td>天井までの投資目安</td><td>${yen(r.cost).replace('+', '')}</td></tr>`
+      : c.unit === 'あべし' ? `<tr><td>天井までの投資目安（1あべし=1G換算・多め）</td><td>${yen(r.cost).replace('+', '')}</td></tr>` : '';
     el.innerHTML = `<table>
       ${r.ev != null ? `<tr class="big"><td>期待値</td><td style="color:var(--${r.level})">${yen(r.ev)}</td></tr>` : ''}
-      <tr><td>天井</td><td>${r.ceil}${c.unit}</td></tr>
+      <tr><td>天井</td><td>${ceilTd}</td></tr>
       <tr><td>天井まで</td><td>${r.remain}${c.unit}</td></tr>
-      <tr><td>天井までの投資目安${c.unit === 'G' ? '' : '（1あべし=1G換算・多め）'}</td><td>${yen(r.cost).replace('+', '')}</td></tr>
+      ${costRow}
       ${r.aim != null ? `<tr><td>狙い目</td><td>${r.aim}${c.unit}〜</td></tr>` : ''}
     </table>`;
     return r;
@@ -488,7 +501,7 @@ function update() {
   const order = { good: 3, warn: 2, bad: 1, none: 0 };
   const best = results.reduce((a, b) => order[b.level] > order[a.level] ? b : a).level;
   const allEmpty = results.every(r => r.empty);
-  const label = allEmpty ? 'ゲーム数を入力' : { good: '◎ 狙い目', warn: '△ 微妙', bad: '× 見送り', none: '判定データなし' }[best];
+  const label = allEmpty ? 'ゲーム数を入力' : { good: '◎ 狙い目', warn: '△ 微妙', bad: '× 見送り', none: 'この状況は期待値・狙い目が未公開' }[best];
   const v = document.getElementById('verdict');
   v.className = `verdict v-${best}`;
   v.textContent = label;
@@ -584,7 +597,7 @@ document.addEventListener('click', e => {
 document.addEventListener('input', e => {
   const t = e.target, d = t.dataset, v = t.value, n = parseFloat(v);
   if (d.in) state.input[state.tab][d.in] = v;
-  else if (d.lend) { if (!(n > 0)) return; state.lend = n; }
+  else if (d.lend) { if (!(n >= 30 && n <= 60)) return; state.lend = n; } // 打ち直し途中の「5」などは無視
   else if (d.cfg === 'memo') setOver(o => o.memo = v);
   else if (d.cfg) {
     // 入力途中の空欄や不正値は無視（0 は有効。コイン持ちだけは 0 以下を不可）

@@ -179,6 +179,7 @@ window.EXTRA_MACHINES = {
   "name": "サンブレイク",
   "full": "スマスロ モンスターハンターライズ：サンブレイク",
   "coin": 32,
+  "coinGuess": true,
   "situations": [
    {
     "id": "normal",
@@ -793,7 +794,10 @@ window.EXTRA_MACHINES = {
     "ceil": {
      "normal": 6,
      "reset": 6
-    }
+    },
+    "guess": [
+     "reset"
+    ]
    }
   ],
   "threshold": 1000,
@@ -1125,7 +1129,11 @@ window.EXTRA_MACHINES = {
      "normal": 1000,
      "reset": 1000,
      "shinbig": 1000
-    }
+    },
+    "guess": [
+     "reset",
+     "shinbig"
+    ]
    },
    {
     "id": "shuki",
@@ -1135,7 +1143,11 @@ window.EXTRA_MACHINES = {
      "normal": 6,
      "reset": 6,
      "shinbig": 6
-    }
+    },
+    "guess": [
+     "reset",
+     "shinbig"
+    ]
    }
   ],
   "threshold": 1000,
@@ -1223,7 +1235,10 @@ window.EXTRA_MACHINES = {
     "ceil": {
      "normal": 5,
      "reset": 5
-    }
+    },
+    "guess": [
+     "reset"
+    ]
    }
   ],
   "threshold": 1000,
@@ -1437,13 +1452,20 @@ window.EXTRA_MACHINES = {
      "big": 7,
      "reg": 7,
      "reset": 7
-    }
+    },
+    "guess": [
+     "reset"
+    ]
    }
   ],
   "threshold": 1000,
   "aim": {
    "czthru_eq_big": 5,
-   "czthru_eq_reg": 5
+   "czthru_eq_reg": 5,
+   "czthru_56m_big": 5,
+   "czthru_56m_reg": 5,
+   "czthru_56c_big": 5,
+   "czthru_56c_reg": 5
   },
   "ev": {
    "g_eq_big": "0,-1178\n50,-1075\n100,-958\n150,-825\n200,-673\n250,-500\n300,-302\n350,-77\n400,179\n450,471\n500,803\n550,1182\n600,1613\n650,2105\n700,2666\n750,3304\n800,4031\n850,4860\n900,5804\n950,6880\n1000,8105\n1050,9502",
@@ -1512,7 +1534,10 @@ window.EXTRA_MACHINES = {
     "ceil": {
      "normal": 560,
      "short": 560
-    }
+    },
+    "guess": [
+     "short"
+    ]
    },
    {
     "id": "czthru",
@@ -1521,7 +1546,10 @@ window.EXTRA_MACHINES = {
     "ceil": {
      "normal": 6,
      "short": 6
-    }
+    },
+    "guess": [
+     "short"
+    ]
    }
   ],
   "threshold": 1000,
@@ -1585,7 +1613,10 @@ window.EXTRA_MACHINES = {
      "normal": 999,
      "reset": 699,
      "shiro": 999
-    }
+    },
+    "guess": [
+     "shiro"
+    ]
    },
    {
     "id": "czg",
@@ -1727,7 +1758,11 @@ window.EXTRA_MACHINES = {
      "normal": 1000,
      "reset": 1000,
      "heaven": 1000
-    }
+    },
+    "guess": [
+     "reset",
+     "heaven"
+    ]
    },
    {
     "id": "cycle",
@@ -1810,7 +1845,10 @@ window.EXTRA_MACHINES = {
     "ceil": {
      "normal": 6,
      "reset": 6
-    }
+    },
+    "guess": [
+     "reset"
+    ]
    }
   ],
   "threshold": 1000,
@@ -2184,7 +2222,10 @@ window.EXTRA_MACHINES = {
     "ceil": {
      "normal": 999,
      "reset": 999
-    }
+    },
+    "guess": [
+     "reset"
+    ]
    },
    {
     "id": "cycle",
@@ -2757,7 +2798,10 @@ window.EXTRA_MACHINES = {
     "ceil": {
      "normal": 4,
      "short": 4
-    }
+    },
+    "guess": [
+     "short"
+    ]
    },
    {
     "id": "atg",
@@ -2766,7 +2810,10 @@ window.EXTRA_MACHINES = {
     "ceil": {
      "normal": 2500,
      "short": 2500
-    }
+    },
+    "guess": [
+     "short"
+    ]
    }
   ],
   "threshold": 1000,
@@ -2824,7 +2871,10 @@ window.EXTRA_MACHINES = {
     "ceil": {
      "normal": 1000,
      "reset": 1000
-    }
+    },
+    "guess": [
+     "reset"
+    ]
    },
    {
     "id": "bonus",
@@ -2833,7 +2883,10 @@ window.EXTRA_MACHINES = {
     "ceil": {
      "normal": 1500,
      "reset": 1500
-    }
+    },
+    "guess": [
+     "reset"
+    ]
    },
    {
     "id": "czthru",
@@ -2842,7 +2895,10 @@ window.EXTRA_MACHINES = {
     "ceil": {
      "normal": 7,
      "reset": 7
-    }
+    },
+    "guess": [
+     "reset"
+    ]
    }
   ],
   "threshold": 1000,
@@ -2912,7 +2968,10 @@ window.EXTRA_MACHINES = {
     "ceil": {
      "normal": 7,
      "reset": 7
-    }
+    },
+    "guess": [
+     "reset"
+    ]
    }
   ],
   "threshold": 1000,
@@ -3217,12 +3276,12 @@ window.EXTRA_MACHINES = {
    }
   ],
   "threshold": 1000,
-  "aim": {},
-  "ev": {
-   "g_eq_normal": "0,-606\n50,106\n100,871\n150,1692\n200,2574\n250,3522\n300,4539\n350,5632\n400,6807\n450,8068\n500,9422\n550,10877",
-   "g_56m_normal": "0,-1939\n50,-1227\n100,-462\n150,359\n200,1241\n250,2189\n300,3206\n350,4300\n400,5474\n450,6735\n500,8089\n550,9544",
-   "g_56c_normal": "0,-1939\n50,-1227\n100,-462\n150,359\n200,1241\n250,2189\n300,3206\n350,4300\n400,5474\n450,6735\n500,8089\n550,9544"
+  "aim": {
+   "g_eq_normal": 250,
+   "g_56m_normal": 300,
+   "g_56c_normal": 300
   },
+  "ev": {},
   "guide": {
    "狙い目": [
     "液晶G数で等価250G～/5.6枚300G～",
@@ -3243,7 +3302,7 @@ window.EXTRA_MACHINES = {
     "設定変更時の天井短縮の記載なし"
    ]
   },
-  "memo": "出典: https://nana-press.com/kaiseki/machine/583/16188/ （超人パワー天井・天井期待値・狙い目、暫定版テキスト表）\nヤメ時: https://nana-press.com/kaiseki/machine/583/16189/ ／朝一: https://nana-press.com/kaiseki/machine/583/16190/\n前提: 独自シミュ、設定1、AT終了後即ヤメ、コイン持ち30.9G/50枚、純増6.1枚/G、閉店欠損なし、非前兆、天井は超人パワーを考慮した実質600Gとして算出、モード/SPモード考慮せず。\n5.6枚の列は現金/持ちの区別なし→eq,56m と同値の56c を併記。\n天井詳細: 超人パワー1000万到達でAT「7人の悪魔超人」当選。モード別天井 通常A1000万/通常B900万/チャンス300万。\n注意: 表は0Gで等価-606円→50Gで+106円と非常に早くプラスになる（ページ記載どおり）。狙い目はページ記載の等価250G/5.6枚300G。\n朝一: 設定変更後は平均規定パワーが優遇（通常A683万・通常B598万）、約25%で高確・約25%でチャンス移行。リセット専用の表なし。\n他サイト: パチ7は天井を「調査中」と記載（検索スニペット、本文未取得）。"
+  "memo": "※期待値表（超人パワーをG数換算した暫定版。等価0G:-606円/50G:+106円/250G:+3,522円）は狙い目（等価250G〜）と大きく食い違うため使わず、狙い目G数で判定\n出典: https://nana-press.com/kaiseki/machine/583/16188/ （超人パワー天井・天井期待値・狙い目、暫定版テキスト表）\nヤメ時: https://nana-press.com/kaiseki/machine/583/16189/ ／朝一: https://nana-press.com/kaiseki/machine/583/16190/\n前提: 独自シミュ、設定1、AT終了後即ヤメ、コイン持ち30.9G/50枚、純増6.1枚/G、閉店欠損なし、非前兆、天井は超人パワーを考慮した実質600Gとして算出、モード/SPモード考慮せず。\n5.6枚の列は現金/持ちの区別なし→eq,56m と同値の56c を併記。\n天井詳細: 超人パワー1000万到達でAT「7人の悪魔超人」当選。モード別天井 通常A1000万/通常B900万/チャンス300万。\n注意: 表は0Gで等価-606円→50Gで+106円と非常に早くプラスになる（ページ記載どおり）。狙い目はページ記載の等価250G/5.6枚300G。\n朝一: 設定変更後は平均規定パワーが優遇（通常A683万・通常B598万）、約25%で高確・約25%でチャンス移行。リセット専用の表なし。\n他サイト: パチ7は天井を「調査中」と記載（検索スニペット、本文未取得）。"
  },
  "hihoden": {
   "name": "秘宝伝",

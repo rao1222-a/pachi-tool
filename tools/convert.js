@@ -3,7 +3,14 @@
 const fs = require('fs');
 
 const FIELD = /^(key|name|full|coin|situations|counters|ev|aim|guide-[^:：]+|memo)\s*[:：]\s*(.*)$/;
-const num = s => Number(String(s).replace(/[,，円+＋\s]/g, '').replace(/[−–]/g, '-'));
+// 全角・▲・各種マイナス記号・桁区切りを吸収。空欄や読めないものは NaN（0 にしない）
+const num = s => {
+  s = String(s ?? '').normalize('NFKC').trim().replace(/^▲/, '-').replace(/[,円+\s]/g, '').replace(/[−–‐—]/g, '-').replace(/[GgＧ回pt]+$/, '');
+  return s === '' ? NaN : Number(s);
+};
+// 「a=1,000, b=2」を key=値 の組に分ける（桁区切りのカンマでは切らない）
+const pairs = s => s.split(/[,、]\s*(?=[A-Za-z0-9_]+\s*=)/).map(p => p.split('=').map(x => x && x.trim()));
+const problems = [];
 
 function parseBlock(text) {
   const f = {};
@@ -28,34 +35,55 @@ function toMachine(f) {
     const [id, label, ...stop] = s.split('|');
     return { id: id.trim(), label: label.trim(), stop: stop.join('|').trim() };
   });
+  const sitIds = new Set(situations.map(s => s.id));
   const counters = items(f.counters).map(s => {
     const [id, label, unit, ceils] = s.split('|').map(x => x.trim());
-    const ceil = {};
-    for (const p of (ceils || '').split(/[,、]/)) {
-      const [sid, v] = p.split('=').map(x => x && x.trim());
-      if (sid && v && !isNaN(num(v))) ceil[sid] = num(v);
+    const ceil = {}, guess = [];
+    for (const [sid, v] of pairs(ceils || '')) {
+      if (!sid || v == null) continue;
+      if (isNaN(num(v))) problems.push(`${key}: ${id} の天井 "${sid}=${v}" が読めない`);
+      else ceil[sid] = num(v);
     }
-    situations.forEach(s => { if (ceil[s.id] == null) ceil[s.id] = ceil[situations[0].id] ?? 0; });
-    return { id, label, unit: unit || 'G', ceil };
+    // 状況ごとの天井が書かれていなければ最初の状況の値を仮に入れ、画面で「仮」と分かるよう guess に記録
+    situations.forEach(s => {
+      if (ceil[s.id] == null) { ceil[s.id] = ceil[situations[0].id] ?? 0; guess.push(s.id); problems.push(`${key}: ${id}.${s.id} の天井を ${ceil[s.id]} で仮置き`); }
+    });
+    return { id, label, unit: unit || 'G', ceil, ...(guess.length ? { guess } : {}) };
   });
+  const cids = new Set(counters.map(c => c.id));
+  const RATES = new Set(['eq', '56m', '56c']);
+  const checkKey = (cid, rate, sit, what) => {
+    if (!cids.has(cid) || !RATES.has(rate) || !sitIds.has(sit)) { problems.push(`${key}: ${what} ${cid}_${rate}_${sit} のカウンター/交換率/状況が存在しない`); return false; }
+    return true;
+  };
   const ev = {};
   for (const line of (f.ev || []).join('\n').split('\n')) {
     const [cid, sit, cols, rows] = line.split('|').map(x => x && x.trim());
-    if (!rows || /未確認/.test(rows)) continue;
+    if (!rows) continue;
     const rates = cols.split(/[,、/]/).map(x => x.trim());
-    const pts = rows.split(/[;；]/).map(r => r.trim()).filter(Boolean).map(r => {
+    const cells = rows.split(/[;；]/).map(r => r.trim()).filter(Boolean).map(r => {
       const [x, vs] = r.split(/[:：]/);
       return [num(x), ...(vs || '').split('/').map(num)];
-    }).filter(p => p.every(v => !isNaN(v)));
+    });
+    // 交換率の列ごとに、読める行だけ使う（1つのセルが読めなくても他の列の行は落とさない）
     rates.forEach((rate, i) => {
-      const t = pts.filter(p => p[i + 1] != null && !isNaN(p[i + 1])).map(p => `${p[0]},${p[i + 1]}`);
-      if (t.length) ev[`${cid}_${rate}_${sit}`] = t.join('\n');
+      if (!checkKey(cid, rate, sit, 'ev')) return;
+      const ok = cells.filter(p => !isNaN(p[0]) && !isNaN(p[i + 1]));
+      if (ok.length < cells.length) problems.push(`${key}: ev ${cid}_${rate}_${sit} で読めない行を${cells.length - ok.length}行スキップ`);
+      if (!ok.length) return;
+      const k = `${cid}_${rate}_${sit}`;
+      if (ev[k]) problems.push(`${key}: ev ${k} が重複（後の行で上書き）`);
+      ev[k] = ok.sort((a, b) => a[0] - b[0]).map(p => `${p[0]},${p[i + 1]}`).join('\n');
     });
   }
   const aim = {};
-  for (const p of (f.aim || []).join(',').split(/[,、]/)) {
-    const [k, v] = p.split('=').map(x => x && x.trim());
-    if (k && v && !isNaN(num(v))) aim[k] = num(v);
+  for (const [k, v] of pairs((f.aim || []).join(','))) {
+    if (!k || v == null) continue;
+    if (isNaN(num(v))) { problems.push(`${key}: aim ${k}=${v} が読めない`); continue; }
+    // カウンターidに _ が含まれる場合があるので、交換率の位置から分け直す
+    const m = k.match(/^(.+)_(eq|56m|56c)_(.+)$/);
+    if (!m || !checkKey(m[1], m[2], m[3], 'aim')) continue;
+    aim[k] = num(v);
   }
   const guide = {};
   for (const k in f) if (k.startsWith('guide-')) {
@@ -63,15 +91,15 @@ function toMachine(f) {
     if (list.length) guide[k.slice(6).trim()] = list;
   }
   const coin = num(f.coin?.[0]);
+  if (isNaN(coin)) problems.push(`${key}: コイン持ちが不明なので32を仮置き`);
   return [key, {
-    name: f.name[0].trim(), full: f.full[0].trim(), coin: isNaN(coin) ? 32 : coin,
+    name: f.name[0].trim(), full: f.full[0].trim(), coin: isNaN(coin) ? 32 : coin, ...(isNaN(coin) ? { coinGuess: true } : {}),
     situations, counters, threshold: 1000, aim, ev, guide,
     memo: (f.memo || []).join('\n').replace(/\\n/g, '\n').trim(),
   }];
 }
 
 const out = {};
-const problems = [];
 for (const file of process.argv.slice(2)) {
   const text = fs.readFileSync(file, 'utf8');
   for (const block of text.split(/\n(?=\s*(?:```\s*\n\s*)?key\s*[:：])/)) {

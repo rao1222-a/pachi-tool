@@ -1,5 +1,5 @@
 // オフライン（ホール内の電波が弱い場所）でも開けるようにキャッシュする
-const CACHE = 'pachi-ev-v4';
+const CACHE = 'pachi-ev-v5'; // データの形を変えたら必ず上げる
 const FILES = ['./', 'index.html', 'machines.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
