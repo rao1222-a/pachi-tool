@@ -79,7 +79,9 @@ for (const file of process.argv.slice(2)) {
     const r = toMachine(parseBlock(block));
     if (!r) continue;
     const [k, m] = r;
-    if (!m.situations.length || !m.counters.length) problems.push(`${k}: 状況かカウンターがない`);
+    // 天井（カウンター）がない機種はこのツールでは判定できないので外す
+    if (!m.situations.length || !m.counters.length) { problems.push(`${k}: 状況かカウンターがないので除外`); continue; }
+    if (out[k]) problems.push(`${k}: keyが重複`);
     out[k] = m;
   }
 }
